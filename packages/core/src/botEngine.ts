@@ -1,4 +1,4 @@
-import { BotState, Platform, JIJ_MINT, SOL_MINT, USDC_MINT, JIJ_DECIMALS, GRID_RANGE_PCT } from './types'
+import { BotState, Platform, JIJ_MINT, SOL_MINT, USDC_MINT, JIJ_DECIMALS, GRID_RANGE_PCT, TRAIL_BUFFER_PCT } from './types'
 import { fetchPrices } from './priceFeeds'
 import { checkGridFills, initGrid, buildInitialOrders } from './gridBot'
 import { checkTrail } from './trailEngine'
@@ -199,17 +199,6 @@ export async function topUpSOL(state: BotState, platform: Platform, amountSOL: n
   const seedAmt = amountSOL * 0.30
   const reserveAmt = amountSOL * 0.70
 
-  // 30% → buy JiJ to extend sell-side coverage
-  try {
-    const result = await jupiterSwap(
-      platform, SOL_MINT, JIJ_MINT, toLamports(seedAmt),
-      state.walletPublicKey, state.config.slippageBps,
-    )
-    logEntry(state, 'INFO', `Top-up seed buy: ${seedAmt.toFixed(4)} SOL → JiJ (tx: ${result.txSignature})`)
-  } catch (err) {
-    logEntry(state, 'ERROR', `Top-up seed buy failed: ${String(err)}`)
-  }
-
   // 70% → grid reserve + redistribute into unfilled buy orders
   state.gridReserve += reserveAmt
   state.config.gridSOL += amountSOL
@@ -224,6 +213,20 @@ export async function topUpSOL(state: BotState, platform: Platform, amountSOL: n
   }
 
   logEntry(state, 'INFO', `Top-up: +${amountSOL.toFixed(4)} SOL committed (${reserveAmt.toFixed(4)} SOL added to grid reserve)`)
+  // Save BEFORE the async swap — protects reserve tracking if app is backgrounded during the buy
+  await saveState(platform, state)
+
+  // 30% → buy JiJ to extend sell-side coverage
+  try {
+    const result = await jupiterSwap(
+      platform, SOL_MINT, JIJ_MINT, toLamports(seedAmt),
+      state.walletPublicKey, state.config.slippageBps,
+    )
+    logEntry(state, 'INFO', `Top-up seed buy: ${seedAmt.toFixed(4)} SOL → JiJ (tx: ${result.txSignature})`)
+  } catch (err) {
+    logEntry(state, 'ERROR', `Top-up seed buy failed: ${String(err)}`)
+  }
+
   await saveState(platform, state)
 }
 
