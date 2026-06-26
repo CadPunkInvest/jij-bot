@@ -1,0 +1,31 @@
+[package]
+name = "jij-bot-desktop"
+version = "1.0.0"
+description = "JIJ Bot — Solana Grid & DCA Trading Bot"
+authors = []
+license = ""
+repository = ""
+edition = "2021"
+
+[lib]
+name = "jij_bot_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-store = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

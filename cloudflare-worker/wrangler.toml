@@ -1,0 +1,8 @@
+name = "jij-swap"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+account_id = "bbe1e30fbc2969633736b5da92969f4f"
+
+routes = [
+  { pattern = "canadianpunkinvesting.com/*", zone_id = "231baeeeba0b6d755012651b71c3fed7" }
+]

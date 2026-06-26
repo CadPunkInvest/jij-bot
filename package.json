@@ -1,0 +1,27 @@
+{
+  "name": "jij-bot",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:desktop": "npm run dev --workspace=apps/desktop",
+    "dev:android": "npm run dev --workspace=apps/android",
+    "build:desktop": "npm run build --workspace=apps/desktop",
+    "build:desktop:design": "VITE_DESIGN_MODE=true npm run build --workspace=apps/desktop",
+    "build:android": "npm run build --workspace=apps/android",
+    "build:android:design": "VITE_DESIGN_MODE=true npm run build --workspace=apps/android",
+    "build:core": "npm run build --workspace=packages/core",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.2",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "capacitor-native-biometric": "^4.2.2",
+    "pdfkit": "^0.19.1"
+  }
+}

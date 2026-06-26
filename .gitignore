@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Rust build artifacts
+apps/desktop/src-tauri/target/
+
+# Frontend build output
+apps/desktop/dist/
+apps/android/dist/
+
+# Capacitor generated Android project (regenerate with `npx cap sync`)
+apps/android/android/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / local tooling
+.vscode/
+.idea/
+*.suo
+*.user
+.claude/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,8 @@
+export { BotProvider, useBotContext } from './BotContext'
+export { SetupScreen } from './SetupScreen'
+export { LiveDashboard } from './LiveDashboard'
+export { SpriteRenderer } from './SpriteRenderer'
+export { AppBackground } from './AppBackground'
+export type { DesignConfig, PanelConfig, SpriteConfig, BackgroundConfig } from './design/designTypes'
+export { DEFAULT_DESIGN_CONFIG } from './design/designTypes'
+export { useDesignConfig } from './design/useDesignConfig'
