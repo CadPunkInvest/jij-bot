@@ -8,6 +8,12 @@ import { logEntry } from './activityLog'
 import { jupiterSwap, toLamports } from './jupiterSwap'
 import { retryPendingTax } from './taxReserve'
 
+const GRID_DENSITIES = [20, 40, 60] as const
+
+function pickGridDensity(): number {
+  return GRID_DENSITIES[Math.floor(Math.random() * GRID_DENSITIES.length)]
+}
+
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 export async function startBots(state: BotState, platform: Platform): Promise<void> {
@@ -65,11 +71,12 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
     state.config.entryPrice = gridEntryPrice
     state.config.gridLower  = gridEntryPrice * (1 - GRID_RANGE_PCT)
     state.config.gridUpper  = gridEntryPrice * (1 + GRID_RANGE_PCT)
+    state.config.gridLevels = pickGridDensity()
 
     initGrid(state)
     buildInitialOrders(state, gridEntryPrice)
     initDCAScheduler(state, platform)
-    logEntry(state, 'INFO', 'Bots started fresh')
+    logEntry(state, 'INFO', `Bots started fresh — grid density: ${state.config.gridLevels} rungs`)
   }
 
   await saveState(platform, state)
@@ -318,9 +325,11 @@ export async function reanchorGrid(state: BotState, platform: Platform): Promise
   state.config.entryPrice = gridEntryPrice
   state.config.gridLower  = gridEntryPrice * (1 - GRID_RANGE_PCT)
   state.config.gridUpper  = gridEntryPrice * (1 + GRID_RANGE_PCT)
+  state.config.gridLevels = pickGridDensity()
 
   initGrid(state)
   buildInitialOrders(state, gridEntryPrice)
+  logEntry(state, 'INFO', `Grid re-anchored — density: ${state.config.gridLevels} rungs`)
 
   logEntry(state, 'INFO', `Grid re-anchored at ${gridEntryPrice.toFixed(8)} SOL — range ${state.config.gridLower.toFixed(8)}–${state.config.gridUpper.toFixed(8)}`)
   await platform.notify.send('Grid Re-anchored', `New range: ${state.config.gridLower.toFixed(6)}–${state.config.gridUpper.toFixed(6)} SOL`)
