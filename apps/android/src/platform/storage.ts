@@ -1,3 +1,6 @@
+// RULE: ALL persistent keys must go through androidStorage (Capacitor Preferences).
+// Preferences survive APK upgrades; localStorage does NOT reliably.
+// Never write wallet or grid data directly to localStorage.
 import { Preferences } from '@capacitor/preferences'
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
 

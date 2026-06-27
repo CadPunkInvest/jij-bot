@@ -141,7 +141,7 @@ export function AuthGate({ bgImage, logoSrc, children }: {
     if (pin !== confirmPin) { setError('PINs do not match — try again'); setPin(''); return }
     setLoading(true)
     try {
-      const { secretKey, publicKey } = getNewKeypairSecretKey()
+      const { secretKey, publicKey } = await getNewKeypairSecretKey()
       await setupPin(secretKey, pin)
       const hex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('')
       setBackupKey(hex); setWalletAddress(publicKey); setAuth('backup')

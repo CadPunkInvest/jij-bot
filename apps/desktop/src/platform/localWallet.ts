@@ -1,15 +1,16 @@
 import { Keypair, Connection, VersionedTransaction, Transaction, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js'
 import { invoke } from '@tauri-apps/api/core'
 import { getSecretKeyFromSession } from './secureKeyStore'
+import { desktopStorage } from './storage'
 
 const PUBKEY_KEY = 'jij-bot-pubkey'
 const RPC = 'https://api.mainnet-beta.solana.com'
 
 let _publicKey: string | null = null
 
-export function getOrCreatePublicKey(): string | null {
+export async function getOrCreatePublicKey(): Promise<string | null> {
   if (_publicKey) return _publicKey
-  const stored = localStorage.getItem(PUBKEY_KEY)
+  const stored = await desktopStorage.get(PUBKEY_KEY)
   if (stored) {
     _publicKey = stored
     return stored
@@ -17,33 +18,27 @@ export function getOrCreatePublicKey(): string | null {
   return null
 }
 
-export function getNewKeypairPublicKey(): string {
-  const kp = Keypair.generate()
-  _publicKey = kp.publicKey.toBase58()
-  localStorage.setItem(PUBKEY_KEY, _publicKey)
-  // Secret key is returned separately — caller passes it to setupPin
-  ;(getNewKeypairPublicKey as unknown as { _lastSecretKey: Uint8Array })._lastSecretKey = kp.secretKey
-  return _publicKey
+async function savePublicKey(pk: string): Promise<void> {
+  _publicKey = pk
+  await desktopStorage.set(PUBKEY_KEY, pk)
 }
 
-export function getNewKeypairSecretKey(): { secretKey: Uint8Array; publicKey: string } {
+export async function getNewKeypairSecretKey(): Promise<{ secretKey: Uint8Array; publicKey: string }> {
   const kp = Keypair.generate()
-  _publicKey = kp.publicKey.toBase58()
-  localStorage.setItem(PUBKEY_KEY, _publicKey)
-  return { secretKey: kp.secretKey, publicKey: _publicKey }
+  await savePublicKey(kp.publicKey.toBase58())
+  return { secretKey: kp.secretKey, publicKey: _publicKey! }
 }
 
 export const localWallet = {
   async connect(): Promise<string> {
-    const pk = getOrCreatePublicKey()
+    const pk = await getOrCreatePublicKey()
     if (pk) return pk
     // pubkey cache wiped (e.g. reinstall) but keypair file intact — derive from session
     try {
       const secretKey = await getSecretKeyFromSession()
       const kp = Keypair.fromSecretKey(secretKey)
-      _publicKey = kp.publicKey.toBase58()
-      localStorage.setItem(PUBKEY_KEY, _publicKey)
-      return _publicKey
+      await savePublicKey(kp.publicKey.toBase58())
+      return _publicKey!
     } catch {
       throw new Error('Wallet not initialized — complete PIN setup first')
     }
@@ -78,7 +73,7 @@ export const localWallet = {
   },
 
   async getBalance(mint?: string): Promise<number> {
-    const pk = getOrCreatePublicKey()
+    const pk = await getOrCreatePublicKey()
     if (!pk) return 0
 
     if (!mint) {
@@ -103,7 +98,7 @@ export const localWallet = {
   },
 
   async withdrawToken(mint: string, toAddress: string, rawAmount: bigint): Promise<string> {
-    const pk = getOrCreatePublicKey()
+    const pk = await getOrCreatePublicKey()
     if (!pk) throw new Error('Wallet not initialized')
     const conn = new Connection(RPC, 'confirmed')
     const {

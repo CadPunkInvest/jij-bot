@@ -1,9 +1,10 @@
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
-// Keys stored as files in AppData — survives reinstalls.
-// Everything else falls through to localStorage.
-const FILE_KEYS = new Set(['jij-bot-state'])
+// RULE: Any key holding wallet or grid data MUST be in FILE_KEYS.
+// AppData files survive NSIS reinstalls; localStorage does NOT.
+// Never remove a key from FILE_KEYS without migrating its data first.
+const FILE_KEYS = new Set(['jij-bot-state', 'jij-bot-pubkey'])
 
 async function getFilePath(key: string): Promise<string> {
   const dir = await appDataDir()
