@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   isPinSet,
   setupPin,
@@ -101,7 +101,10 @@ export function AuthGate({
   logoSrc?: string
   children: React.ReactNode
 }) {
-  const [authState, setAuthState] = useState<AuthState>('checking')
+  const [authState, _setAuthState] = useState<AuthState>('checking')
+  const authStateRef = useRef<AuthState>('checking')
+  const biometricInFlight = useRef(false)
+  const setAuth = (s: AuthState) => { authStateRef.current = s; _setAuthState(s) }
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState('')
@@ -115,20 +118,27 @@ export function AuthGate({
 
   useEffect(() => {
     init()
+    // Keep session alive while app is in the foreground
+    const keepAlive = setInterval(() => {
+      if (authStateRef.current === 'unlocked' && document.visibilityState === 'visible') touchSession()
+    }, 60_000)
     // Re-lock on app resume if session expired
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && authState === 'unlocked' && isSessionExpired()) {
-        clearSession()
-        setAuthState('checking')
-        init()
-      } else if (document.visibilityState === 'hidden') {
-        // nothing
-      } else {
-        touchSession()
+      if (document.visibilityState === 'visible') {
+        if (authStateRef.current === 'unlocked' && isSessionExpired()) {
+          clearSession()
+          setAuth('checking')
+          init()
+        } else {
+          touchSession()
+        }
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      clearInterval(keepAlive)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [])
 
   // Auto-submit when PIN is full length
@@ -147,36 +157,38 @@ export function AuthGate({
     setBiometricAvailable(biometric)
     const hasPin = await isPinSet()
     if (!hasPin) {
-      setAuthState('pin-setup')
+      setAuth('pin-setup')
       return
     }
     // Has a PIN — try biometric first if enrolled
     if (biometric && await isBiometricEnrolled()) {
-      setAuthState('biometric-prompt')
+      setAuth('biometric-prompt')
       tryBiometric()
     } else {
-      setAuthState('pin-entry')
+      setAuth('pin-entry')
     }
   }
 
   async function tryBiometric() {
+    if (biometricInFlight.current) return
+    biometricInFlight.current = true
     setLoading(true)
     setError('')
     try {
       const savedPin = await getPinFromBiometric()
       const secretKey = await unlockWithPin(savedPin)
       storeKeyForBackground(secretKey).catch(() => {})
-      setAuthState('unlocked')
-    } catch (e: unknown) {
-      // User cancelled or biometric failed — fall back to PIN
-      const msg = e instanceof Error ? e.message : String(e)
-      if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('cancel')) {
-        setAuthState('pin-entry')
-      } else {
-        setAuthState('pin-entry')
+      setAuth('unlocked')
+    } catch {
+      // User cancelled, biometric failed, or stored credential doesn't match — fall back to PIN
+      // Only navigate to pin-entry if we're still in a biometric state (guard against concurrent calls)
+      if (authStateRef.current === 'biometric-prompt') {
+        setAuth('pin-entry')
       }
+    } finally {
+      setLoading(false)
+      biometricInFlight.current = false
     }
-    setLoading(false)
   }
 
   async function handlePinSetupNext() {
@@ -184,7 +196,7 @@ export function AuthGate({
     setConfirmPin(pin)  // save first PIN entry
     setPin('')
     setError('')
-    setAuthState('pin-setup-confirm')
+    setAuth('pin-setup-confirm')
   }
 
   async function handlePinSetupConfirm() {
@@ -201,7 +213,7 @@ export function AuthGate({
       storeKeyForBackground(secretKey).catch(() => {})
       const bs58 = await import('bs58')
       setBackupKey(bs58.default.encode(secretKey))
-      setAuthState('backup-key')
+      setAuth('backup-key')
     } catch (e) {
       setError(String(e))
     }
@@ -214,7 +226,7 @@ export function AuthGate({
     try {
       const secretKey = await unlockWithPin(pin)
       storeKeyForBackground(secretKey).catch(() => {})
-      setAuthState('unlocked')
+      setAuth('unlocked')
     } catch {
       setError('Incorrect PIN')
       setPin('')
@@ -227,7 +239,7 @@ export function AuthGate({
     setConfirmPin(pin)
     setPin('')
     setError('')
-    setAuthState('import-pin-confirm')
+    setAuth('import-pin-confirm')
   }
 
   async function handleImportPinConfirm() {
@@ -245,11 +257,11 @@ export function AuthGate({
       await Preferences.set({ key: 'jij-bot-pubkey', value: kp.publicKey.toBase58() })
       const bs58 = await import('bs58')
       setBackupKey(bs58.default.encode(secretKey))
-      setAuthState('backup-key')
+      setAuth('backup-key')
     } catch (e) {
       setError(String(e))
       setPin('')
-      setAuthState('import-pin')
+      setAuth('import-pin')
     }
     setLoading(false)
   }
@@ -258,10 +270,10 @@ export function AuthGate({
     setLoading(true)
     try {
       await savePinToBiometric(pin)
-      setAuthState('unlocked')
+      setAuth('unlocked')
     } catch (e) {
       setError(String(e))
-      setAuthState('unlocked') // skip biometric enrollment, still unlock
+      setAuth('unlocked') // skip biometric enrollment, still unlock
     }
     setLoading(false)
   }
@@ -302,7 +314,7 @@ export function AuthGate({
               loading={loading}
             />
             <button
-              onClick={() => { setPin(''); setError(''); setAuthState('import-key') }}
+              onClick={() => { setPin(''); setError(''); setAuth('import-key') }}
               className="w-full max-w-xs mx-auto block text-sm text-white/30 hover:text-white/50 text-center transition-colors">
               Restore existing wallet →
             </button>
@@ -368,9 +380,9 @@ export function AuthGate({
                 setBackupKey('')
                 setBackupKeyConfirmed(false)
                 if (biometricAvailable) {
-                  setAuthState('biometric-enroll')
+                  setAuth('biometric-enroll')
                 } else {
-                  setAuthState('unlocked')
+                  setAuth('unlocked')
                 }
               }}
               className="w-full py-3 bg-purple-600/60 hover:bg-purple-500/70 border border-purple-400/30 text-white rounded-2xl text-sm font-semibold transition-colors disabled:opacity-30">
@@ -397,13 +409,13 @@ export function AuthGate({
               onClick={() => {
                 if (!importKey.trim()) { setImportKeyError('Paste your private key first'); return }
                 setPin(''); setError('')
-                setAuthState('import-pin')
+                setAuth('import-pin')
               }}
               className="w-full py-3 bg-purple-600/60 hover:bg-purple-500/70 border border-purple-400/30 text-white rounded-2xl text-sm font-semibold transition-colors">
               Next — Set PIN
             </button>
             <button
-              onClick={() => { setImportKey(''); setImportKeyError(''); setAuthState('pin-setup') }}
+              onClick={() => { setImportKey(''); setImportKeyError(''); setAuth('pin-setup') }}
               className="w-full py-2 text-white/30 hover:text-white/50 text-sm text-center transition-colors">
               ← Back
             </button>
@@ -458,7 +470,7 @@ export function AuthGate({
             <div className="text-white font-semibold">Touch to unlock</div>
             <div className="text-white/40 text-sm">Biometric authentication</div>
             {loading && <div className="text-white/30 text-xs">Authenticating…</div>}
-            <button onClick={() => setAuthState('pin-entry')}
+            <button onClick={() => setAuth('pin-entry')}
               className="mt-4 text-sm text-white/30 hover:text-white/50 transition-colors">
               Use PIN instead
             </button>
@@ -475,7 +487,7 @@ export function AuthGate({
               className="w-full py-3 bg-purple-600/60 hover:bg-purple-500/70 border border-purple-400/30 text-white rounded-2xl text-sm font-semibold transition-colors disabled:opacity-40">
               {loading ? 'Setting up…' : 'Enable Biometric'}
             </button>
-            <button onClick={() => setAuthState('unlocked')}
+            <button onClick={() => setAuth('unlocked')}
               className="w-full py-2 text-white/30 hover:text-white/50 text-sm transition-colors">
               Skip for now
             </button>

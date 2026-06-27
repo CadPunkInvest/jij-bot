@@ -3,7 +3,8 @@ import { NativeBiometric } from 'capacitor-native-biometric'
 
 const ENCRYPTED_KEY = 'jij-bot-keypair-v2'
 const BIOMETRIC_SERVER = 'jijbot.wallet'
-const LOCK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+const LOCK_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+const LAST_ACTIVE_LS_KEY = 'jij-session-last-active'
 
 // In-memory derived key for the session — cleared on background timeout
 let sessionDerivedKey: CryptoKey | null = null
@@ -62,6 +63,7 @@ export async function setupPin(secretKey: Uint8Array, pin: string): Promise<void
   })
   sessionDerivedKey = derivedKey
   lastActiveTime = Date.now()
+  try { localStorage.setItem(LAST_ACTIVE_LS_KEY, String(lastActiveTime)) } catch {}
 }
 
 export async function unlockWithPin(pin: string): Promise<Uint8Array> {
@@ -73,6 +75,7 @@ export async function unlockWithPin(pin: string): Promise<Uint8Array> {
     const secretKey = await decryptBytes(cipher, iv, derivedKey)
     sessionDerivedKey = derivedKey
     lastActiveTime = Date.now()
+    try { localStorage.setItem(LAST_ACTIVE_LS_KEY, String(lastActiveTime)) } catch {}
     return secretKey
   } catch {
     throw new Error('Incorrect PIN')
@@ -140,14 +143,21 @@ export async function setupPinWithImportedKey(input: string, pin: string): Promi
 
 export function touchSession(): void {
   lastActiveTime = Date.now()
+  try { localStorage.setItem(LAST_ACTIVE_LS_KEY, String(lastActiveTime)) } catch {}
 }
 
 export function isSessionExpired(): boolean {
+  // Prefer localStorage so the check survives WebView recreation
+  try {
+    const stored = localStorage.getItem(LAST_ACTIVE_LS_KEY)
+    if (stored) return Date.now() - parseInt(stored, 10) > LOCK_TIMEOUT_MS
+  } catch {}
   return Date.now() - lastActiveTime > LOCK_TIMEOUT_MS
 }
 
 export function clearSession(): void {
   sessionDerivedKey = null
+  try { localStorage.removeItem(LAST_ACTIVE_LS_KEY) } catch {}
 }
 
 // ── Biometric operations ──────────────────────────────────────────

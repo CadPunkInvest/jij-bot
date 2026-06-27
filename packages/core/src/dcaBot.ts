@@ -56,10 +56,20 @@ export async function executeDCABuy(state: BotState, platform: Platform): Promis
     return
   }
 
-  const solUsdPrice = state.lastSolUsdPrice
+  let solUsdPrice = state.lastSolUsdPrice
   if (solUsdPrice <= 0) {
-    logEntry(state, 'ERROR', 'DCA buy aborted — SOL/USD price unavailable')
-    return
+    // lastSolUsdPrice is 0 on first app resume before poll runs — try a fresh fetch
+    try {
+      const { fetchPrices } = await import('./priceFeeds')
+      const { JIJ_MINT } = await import('./types')
+      const prices = await fetchPrices(JIJ_MINT, platform)
+      solUsdPrice = prices.solUsdPrice
+      state.lastSolUsdPrice = solUsdPrice
+      state.lastPriceSOL = prices.jijSolPrice
+    } catch {
+      logEntry(state, 'ERROR', 'DCA buy aborted — SOL/USD price unavailable')
+      return
+    }
   }
 
   const dailyCapSOL = state.config.dailyDCALimitUSD / solUsdPrice

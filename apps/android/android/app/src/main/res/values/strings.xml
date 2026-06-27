@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JIJ Bot</string>
+    <string name="title_activity_main">JIJ Bot</string>
+    <string name="package_name">com.jijbot.android</string>
+    <string name="custom_url_scheme">com.jijbot.android</string>
+</resources>
