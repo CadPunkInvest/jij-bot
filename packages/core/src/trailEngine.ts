@@ -10,8 +10,9 @@ export async function checkTrail(
 
   let shifts = 0
   while (currentPrice > state.gridUpper * (1 + trailSensitivity)) {
-    if (state.trailBuffer < minBufferToShift) {
-      logEntry(state, 'INFO', `Trail trigger at ${currentPrice} but buffer too low (${state.trailBuffer.toFixed(4)} SOL < ${minBufferToShift} SOL)`)
+    const availableSOL = state.trailBuffer + state.gridReserve
+    if (availableSOL < minBufferToShift) {
+      logEntry(state, 'INFO', `Trail trigger at ${currentPrice} but combined SOL too low (${availableSOL.toFixed(4)} SOL < ${minBufferToShift} SOL)`)
       break
     }
     shiftGridUp(state, currentPrice)
@@ -49,7 +50,9 @@ function shiftGridUp(state: BotState, currentPrice: number): void {
   state.openOrders = state.openOrders.filter(o => o.id !== bottomBuy.id)
 
   const shiftCost = gridStep * state.quantityPerGrid
-  state.trailBuffer -= shiftCost
+  const fromTrail = Math.min(shiftCost, state.trailBuffer)
+  state.trailBuffer -= fromTrail
+  state.gridReserve -= (shiftCost - fromTrail)
   state.gridLower += gridStep
   state.gridUpper += gridStep
 

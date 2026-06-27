@@ -159,7 +159,7 @@ export const DEFAULT_CONFIG: BotConfig = {
   entryPrice: 0,
   gridLevels: 20,
   taxReservePct: 50,
-  trailSensitivity: 0.02,
+  trailSensitivity: 0.07,
   minBufferToShift: 0.05,
   slippageBps: 500,
   taxSwapSlippageBps: 200,

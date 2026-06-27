@@ -37,8 +37,16 @@ export const localWallet = {
   async connect(): Promise<string> {
     const pk = getOrCreatePublicKey()
     if (pk) return pk
-    // Shouldn't happen after AuthGate sets up the keypair — fallback only
-    throw new Error('Wallet not initialized — complete PIN setup first')
+    // pubkey cache wiped (e.g. reinstall) but keypair file intact — derive from session
+    try {
+      const secretKey = await getSecretKeyFromSession()
+      const kp = Keypair.fromSecretKey(secretKey)
+      _publicKey = kp.publicKey.toBase58()
+      localStorage.setItem(PUBKEY_KEY, _publicKey)
+      return _publicKey
+    } catch {
+      throw new Error('Wallet not initialized — complete PIN setup first')
+    }
   },
 
   async disconnect(): Promise<void> {},

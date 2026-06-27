@@ -21,6 +21,10 @@ import {
   fetchPrices,
   JIJ_MINT,
   reanchorGrid,
+  allocateCapital,
+  initGrid,
+  buildInitialOrders,
+  GRID_RANGE_PCT,
 } from '@jij-bot/core'
 import { setDCAStatus, initDCAScheduler } from '@jij-bot/core'
 
@@ -44,6 +48,7 @@ interface BotContextValue {
   triggerResume: () => void
   previewDashboard: () => void
   reanchorGrid: () => Promise<void>
+  recoverState: (gridSOL: number, dailyDCALimitUSD: number) => Promise<void>
 }
 
 const BotContext = createContext<BotContextValue | null>(null)
@@ -190,6 +195,29 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     setState({ ...stateRef.current })
   }
 
+  // Rebuild state from current on-chain price for a bot that was already running
+  // but whose localStorage was wiped. Populates openOrders so startBots takes
+  // the isResume path and skips the seed buy.
+  const handleRecoverState = async (gridSOL: number, dailyDCALimitUSD: number) => {
+    if (!platform) throw new Error('Platform not initialized')
+    const prices = await fetchPrices(JIJ_MINT, platform)
+    const currentPrice = prices.jijSolPrice
+    mutate(s => {
+      s.config.gridSOL = gridSOL
+      s.config.dailyDCALimitUSD = dailyDCALimitUSD
+      s.config.entryPrice = currentPrice
+      s.config.gridLower = currentPrice * (1 - GRID_RANGE_PCT)
+      s.config.gridUpper = currentPrice * (1 + GRID_RANGE_PCT)
+      s.lastPriceSOL = currentPrice
+      s.lastSolUsdPrice = prices.solUsdPrice
+      allocateCapital(s, currentPrice)
+      s.seedSOL = 0  // seed buy already happened — don't repeat it
+      initGrid(s)
+      buildInitialOrders(s, currentPrice)
+      s.botRunning = false  // user will click Resume to start polling
+    })
+  }
+
   const previewDashboard = () => {
     stateRef.current.botRunning = true
     setState({ ...stateRef.current })
@@ -223,6 +251,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       triggerResume,
       previewDashboard,
       reanchorGrid: handleReanchor,
+      recoverState: handleRecoverState,
     }}>
       {children}
     </BotContext.Provider>

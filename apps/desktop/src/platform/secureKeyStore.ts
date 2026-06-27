@@ -1,8 +1,54 @@
+import { readTextFile, writeTextFile, exists, mkdir, remove } from '@tauri-apps/plugin-fs'
+import { appDataDir, join } from '@tauri-apps/api/path'
+
 const ENCRYPTED_KEY = 'jij-bot-keypair-v2'
-const LOCK_TIMEOUT_MS = 5 * 60 * 1000
+const LOCK_TIMEOUT_MS = 15 * 60 * 1000
 
 let sessionDerivedKey: CryptoKey | null = null
 let lastActiveTime = Date.now()
+
+// ── AppData file helpers — survives NSIS reinstalls ───────────────
+
+async function getKeyFilePath(): Promise<string> {
+  const dir = await appDataDir()
+  await mkdir(dir, { recursive: true }).catch(() => {})
+  return join(dir, `${ENCRYPTED_KEY}.json`)
+}
+
+async function readKeyFile(): Promise<string | null> {
+  try {
+    const path = await getKeyFilePath()
+    if (!(await exists(path))) {
+      // One-time migration from localStorage
+      const lsVal = localStorage.getItem(ENCRYPTED_KEY)
+      if (lsVal) {
+        await writeTextFile(path, lsVal)
+        localStorage.removeItem(ENCRYPTED_KEY)
+        return lsVal
+      }
+      return null
+    }
+    return await readTextFile(path)
+  } catch {
+    return localStorage.getItem(ENCRYPTED_KEY)
+  }
+}
+
+async function writeKeyFile(value: string): Promise<void> {
+  const path = await getKeyFilePath()
+  await writeTextFile(path, value)
+  localStorage.removeItem(ENCRYPTED_KEY) // keep localStorage clean
+}
+
+async function deleteKeyFile(): Promise<void> {
+  try {
+    const path = await getKeyFilePath()
+    if (await exists(path)) await remove(path)
+  } catch {}
+  localStorage.removeItem(ENCRYPTED_KEY)
+}
+
+// ── Web Crypto helpers ────────────────────────────────────────────
 
 function b64ToBytes(b64: string): Uint8Array {
   return Uint8Array.from(atob(b64), c => c.charCodeAt(0))
@@ -38,21 +84,24 @@ async function decryptBytes(cipher: string, iv: string, key: CryptoKey): Promise
   return new Uint8Array(dec)
 }
 
-export function isPinSet(): boolean {
-  return !!localStorage.getItem(ENCRYPTED_KEY)
+// ── PIN operations ────────────────────────────────────────────────
+
+export async function isPinSet(): Promise<boolean> {
+  const val = await readKeyFile()
+  return !!val
 }
 
 export async function setupPin(secretKey: Uint8Array, pin: string): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const derivedKey = await deriveKey(pin, salt)
   const { cipher, iv } = await encryptBytes(secretKey, derivedKey)
-  localStorage.setItem(ENCRYPTED_KEY, JSON.stringify({ cipher, iv, salt: bytesToB64(salt) }))
+  await writeKeyFile(JSON.stringify({ cipher, iv, salt: bytesToB64(salt) }))
   sessionDerivedKey = derivedKey
   lastActiveTime = Date.now()
 }
 
 export async function unlockWithPin(pin: string): Promise<Uint8Array> {
-  const stored = localStorage.getItem(ENCRYPTED_KEY)
+  const stored = await readKeyFile()
   if (!stored) throw new Error('No encrypted keypair found')
   const { cipher, iv, salt } = JSON.parse(stored)
   const derivedKey = await deriveKey(pin, b64ToBytes(salt))
@@ -68,10 +117,15 @@ export async function unlockWithPin(pin: string): Promise<Uint8Array> {
 
 export async function getSecretKeyFromSession(): Promise<Uint8Array> {
   if (!sessionDerivedKey) throw new Error('Session locked')
-  const stored = localStorage.getItem(ENCRYPTED_KEY)
+  const stored = await readKeyFile()
   if (!stored) throw new Error('No encrypted keypair found')
   const { cipher, iv } = JSON.parse(stored)
   return decryptBytes(cipher, iv, sessionDerivedKey)
+}
+
+export async function clearStoredKey(): Promise<void> {
+  await deleteKeyFile()
+  sessionDerivedKey = null
 }
 
 export function touchSession(): void {

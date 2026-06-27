@@ -37,7 +37,7 @@ const inputStyle: React.CSSProperties = {
 }
 
 export function SetupScreen({ bgImage, logoSrc }: { bgImage?: string; logoSrc?: string }) {
-  const { state, startBots, updateConfig, refreshBalance, withdrawSOL, previewDashboard } = useBotContext()
+  const { state, startBots, updateConfig, refreshBalance, withdrawSOL, previewDashboard, recoverState } = useBotContext()
   const hasExistingConfig = state.config.gridSOL > 0
   const [gridSOL, setGridSOL] = useState(() => hasExistingConfig ? String(state.config.gridSOL) : '')
   const [dailyUSD, setDailyUSD] = useState(() => String(state.config.dailyDCALimitUSD || 50))
