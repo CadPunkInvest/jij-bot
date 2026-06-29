@@ -179,21 +179,35 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 // --- Grid bar visual ---
 function GridBar() {
   const { state } = useBotContext()
-  const { openOrders, lastPriceSOL, gridLower, gridUpper, totalGridFills } = state
+  const { openOrders, lastPriceSOL, gridLower, gridUpper, totalGridFills, gridLevels } = state
+  const gridFormat = gridLevels === 60 ? 3 : gridLevels === 40 ? 2 : 1
+  const [showPrices, setShowPrices] = useState(false)
+
   if (openOrders.length === 0) return null
 
   const sorted = [...openOrders].sort((a, b) => a.price - b.price)
+  const sortedDesc = [...openOrders].sort((a, b) => b.price - a.price)
   const pricePct = gridUpper > gridLower
     ? Math.max(0, Math.min(100, ((lastPriceSOL - gridLower) / (gridUpper - gridLower)) * 100))
     : 50
 
   return (
+    <>
     <div style={card}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>Grid</div>
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>Grid</div>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
+            Format {gridFormat}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={dimText}>Fills: <span style={{ color: 'white', fontWeight: 700 }}>{totalGridFills}</span></span>
           <span style={dimText}>Levels: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.length}</span></span>
+          <button onClick={() => setShowPrices(true)}
+            style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer' }}>
+            Prices
+          </button>
         </div>
       </div>
 
@@ -233,6 +247,59 @@ function GridBar() {
         ))}
       </div>
     </div>
+
+    {showPrices && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+        onClick={e => { if (e.target === e.currentTarget) setShowPrices(false) }}>
+        <div style={{ ...card, width: '100%', maxWidth: 320, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Grid Prices</div>
+            <button onClick={() => setShowPrices(false)}
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(180,180,220,0.7)', cursor: 'pointer' }}>
+              Close
+            </button>
+          </div>
+
+          {lastPriceSOL > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)' }}>
+              <span style={{ fontSize: 11, color: '#93c5fd', fontWeight: 700 }}>▶ NOW</span>
+              <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#93c5fd' }}>{lastPriceSOL.toFixed(8)} SOL</span>
+            </div>
+          )}
+
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {sortedDesc.map(o => {
+              const isNear = lastPriceSOL > 0 && Math.abs(o.price - lastPriceSOL) / lastPriceSOL < 0.005
+              const isBuy = o.side === 'buy'
+              return (
+                <div key={o.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '5px 8px', borderRadius: 6, marginBottom: 2,
+                  background: isNear ? 'rgba(251,191,36,0.08)' : 'transparent',
+                  border: isNear ? '1px solid rgba(251,191,36,0.25)' : '1px solid transparent',
+                  opacity: o.filled ? 0.3 : 1,
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, width: 28, color: isBuy ? '#4ade80' : '#f87171' }}>
+                    {isBuy ? 'BUY' : 'SELL'}
+                  </span>
+                  <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'white', flex: 1 }}>
+                    {o.price.toFixed(8)}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'rgba(160,160,200,0.5)' }}>L{o.level}</span>
+                  {o.filled && <span style={{ fontSize: 10, color: 'rgba(160,160,200,0.4)' }}>✓</span>}
+                </div>
+              )
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <span style={dimText}>Open: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
+            <span style={dimText}>Filled: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => o.filled).length}</span></span>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
@@ -251,16 +318,22 @@ const TAX_PRESETS = [20, 30, 40, 50]
 
 // --- Stats row ---
 function StatsRow() {
-  const { state, topUpSOL, updateConfig } = useBotContext()
+  const { state, topUpSOL, updateConfig, refreshBalance } = useBotContext()
   const { realizedPnLSOL, realizedPnLUSD, gridReserve, trailBuffer, taxReserveUSDC, lastSolUsdPrice, config } = state
   const [showTopUp, setShowTopUp] = useState(false)
   const [topUpAmount, setTopUpAmount] = useState('')
   const [topUpBusy, setTopUpBusy] = useState(false)
+  const [walletSOL, setWalletSOL] = useState<number | null>(null)
   const [editingTax, setEditingTax] = useState(false)
   const [draftTaxPct, setDraftTaxPct] = useState(config.taxReservePct)
 
   const gridUSD = gridReserve * lastSolUsdPrice
   const trailUSD = trailBuffer * lastSolUsdPrice
+
+  const openTopUp = async () => {
+    setShowTopUp(true)
+    try { setWalletSOL(await refreshBalance()) } catch { setWalletSOL(null) }
+  }
 
   const handleTopUp = async () => {
     const amount = parseFloat(topUpAmount)
@@ -290,7 +363,7 @@ function StatsRow() {
         <div style={card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <div style={cardLabel}>Grid Reserve</div>
-            <button onClick={() => setShowTopUp(true)}
+            <button onClick={openTopUp}
               style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(96,165,250,0.2)', border: '1px solid rgba(96,165,250,0.4)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer' }}>
               + Top Up
             </button>
@@ -342,7 +415,20 @@ function StatsRow() {
       {showTopUp && (
         <Modal onClose={() => { setShowTopUp(false); setTopUpAmount('') }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'white', marginBottom: 4 }}>Add SOL to Grid</div>
-          <p style={{ ...dimText, marginBottom: 16, lineHeight: 1.5 }}>30% buys JiJ immediately · 70% added to grid reserve</p>
+          <p style={{ ...dimText, marginBottom: 12, lineHeight: 1.5 }}>30% buys JiJ immediately · 70% added to grid reserve</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ ...dimText, fontSize: 13 }}>
+              Available: <span style={{ color: 'white', fontWeight: 600 }}>
+                {walletSOL != null ? `${walletSOL.toFixed(4)} SOL` : '…'}
+              </span>
+            </span>
+            {walletSOL != null && walletSOL > 0.000005 && (
+              <button onClick={() => setTopUpAmount((walletSOL - 0.000005).toFixed(4))}
+                style={{ fontSize: 12, fontWeight: 600, color: '#93c5fd', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 8, padding: '3px 10px', cursor: 'pointer' }}>
+                Max
+              </button>
+            )}
+          </div>
           <div style={{ position: 'relative', marginBottom: 14 }}>
             <input type="number" min="0.01" step="0.01" value={topUpAmount}
               onChange={e => setTopUpAmount(e.target.value)} placeholder="0.00" style={inputStyle} />

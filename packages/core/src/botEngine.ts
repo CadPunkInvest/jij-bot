@@ -31,6 +31,9 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
   if (isResume) {
     healOrderQuantities(state)
     healGridReserve(state)
+    if (state.gridFormatVersion < 2) {
+      migrateGridFormat(state, prices.jijSolPrice)
+    }
     logEntry(state, 'INFO', 'Bot restarted — resuming existing grid')
     initDCAScheduler(state, platform)
     await checkMissedBuy(state, platform)
@@ -81,6 +84,15 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
 
   await saveState(platform, state)
   schedulePoll(state, platform)
+}
+
+function migrateGridFormat(state: BotState, currentPrice: number): void {
+  const newDensity = GRID_DENSITIES[Math.floor(Math.random() * GRID_DENSITIES.length)]
+  state.config.gridLevels = newDensity
+  initGrid(state)
+  buildInitialOrders(state, currentPrice)
+  state.gridFormatVersion = 2
+  logEntry(state, 'INFO', `Grid migrated to Format ${GRID_DENSITIES.indexOf(newDensity) + 1} (${newDensity} rungs)`)
 }
 
 function healOrderQuantities(state: BotState): void {
@@ -171,6 +183,10 @@ async function poll(state: BotState, platform: Platform): Promise<void> {
 }
 
 export async function onAppResume(state: BotState, platform: Platform): Promise<void> {
+  if (state.botRunning) {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
+    schedulePoll(state, platform)
+  }
   checkMissedBuy(state, platform)
 }
 

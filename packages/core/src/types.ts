@@ -149,6 +149,7 @@ export interface BotState {
   lastPriceSOL: number
   lastSolUsdPrice: number
   lastPollTime: number
+  gridFormatVersion: number
 }
 
 export const DEFAULT_CONFIG: BotConfig = {
@@ -206,6 +207,7 @@ export const DEFAULT_STATE: BotState = {
   lastPriceSOL: 0,
   lastSolUsdPrice: 0,
   lastPollTime: 0,
+  gridFormatVersion: 1,
 }
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112'
