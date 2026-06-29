@@ -203,7 +203,7 @@ function GridBar() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={dimText}>Fills: <span style={{ color: 'white', fontWeight: 700 }}>{totalGridFills}</span></span>
-          <span style={dimText}>Levels: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.length}</span></span>
+          <span style={dimText}>Levels: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
           <button onClick={() => setShowPrices(true)}
             style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer' }}>
             Prices

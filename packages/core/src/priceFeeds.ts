@@ -52,7 +52,10 @@ export async function fetchPrices(jijMint: string, platform: Platform): Promise<
 }
 
 async function fetchFromDexscreener(jijMint: string, platform: Platform): Promise<{ jijSolPrice: number; jijUsdPrice: number }> {
-  const res = await platform.http.get(`${DEXSCREENER_TOKEN_URL}/${jijMint}`)
+  const res = await Promise.race([
+    platform.http.get(`${DEXSCREENER_TOKEN_URL}/${jijMint}`),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Dexscreener timeout')), 10_000)),
+  ])
   if (res.status !== 200) throw new Error(`Dexscreener fetch failed: ${res.status}`)
   const json = res.data as Record<string, unknown>
 

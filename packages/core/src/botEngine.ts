@@ -170,12 +170,12 @@ function schedulePoll(state: BotState, platform: Platform): void {
 }
 
 async function poll(state: BotState, platform: Platform): Promise<void> {
+  state.lastPollTime = Date.now()
+  platform.storage.set('jij-last-poll-time', String(state.lastPollTime)).catch(() => {})
   try {
     const prices = await fetchPrices(JIJ_MINT, platform)
     state.lastPriceSOL = prices.jijSolPrice
     state.lastSolUsdPrice = prices.solUsdPrice
-    state.lastPollTime = Date.now()
-    platform.storage.set('jij-last-poll-time', String(state.lastPollTime)).catch(() => {})
 
     if (state.pendingTaxReserveSOL > 0) {
       await retryPendingTax(state, platform, prices.solUsdPrice)
