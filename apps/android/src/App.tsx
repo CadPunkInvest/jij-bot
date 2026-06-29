@@ -5,8 +5,8 @@ import { BotProvider, useBotContext, SetupScreen, LiveDashboard } from '@jij-bot
 import { androidPlatform } from './platform'
 import { AuthGate } from './AuthGate'
 import { startBackgroundWorker, stopBackgroundWorker } from './platform/backgroundWorker'
-import setupBg from './assets/setup-bg.png'
-import dashBg from './assets/dashboard-bg.png'
+import setupBg from './assets/mobile_setup_bg.png'
+import dashBg from './assets/mobile_dashboard_bg.png'
 import logo from './assets/logo_jic1.png'
 
 function AppInner() {
