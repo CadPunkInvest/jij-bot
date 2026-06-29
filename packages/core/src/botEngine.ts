@@ -151,7 +151,16 @@ export function stopBots(state: BotState): void {
 function schedulePoll(state: BotState, platform: Platform): void {
   if (!state.botRunning) return
   pollTimer = setTimeout(async () => {
-    await poll(state, platform)
+    try {
+      await Promise.race([
+        poll(state, platform),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('poll timeout')), 30_000)
+        ),
+      ])
+    } catch (err) {
+      console.error('Poll cycle failed or timed out:', err)
+    }
     schedulePoll(state, platform)
   }, state.config.pollingIntervalSec * 1000)
 }
