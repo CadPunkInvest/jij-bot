@@ -13,13 +13,30 @@ export interface PriceFeed {
 let cachedFeed: PriceFeed | null = null
 let lastFetchTime = 0
 let lastGoodSolUsdPrice = 0
+let lastGoodJijSolPrice = 0
 const CACHE_MS = 5000
+
+export function seedPriceCache(jijSolPrice: number, solUsdPrice: number): void {
+  if (jijSolPrice > 0) lastGoodJijSolPrice = jijSolPrice
+  if (solUsdPrice > 0) lastGoodSolUsdPrice = solUsdPrice
+}
 
 export async function fetchPrices(jijMint: string, platform: Platform): Promise<PriceFeed> {
   const now = Date.now()
   if (cachedFeed && now - lastFetchTime < CACHE_MS) return cachedFeed
 
-  const { jijSolPrice } = await fetchFromDexscreener(jijMint, platform)
+  let jijSolPrice: number
+  try {
+    const result = await fetchFromDexscreener(jijMint, platform)
+    jijSolPrice = result.jijSolPrice
+    lastGoodJijSolPrice = jijSolPrice
+  } catch (err) {
+    if (lastGoodJijSolPrice > 0) {
+      jijSolPrice = lastGoodJijSolPrice
+    } else {
+      throw err
+    }
+  }
 
   let solUsdPrice: number
   try {

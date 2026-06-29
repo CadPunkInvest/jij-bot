@@ -1,5 +1,5 @@
 import { BotState, Platform, JIJ_MINT, SOL_MINT, USDC_MINT, JIJ_DECIMALS, GRID_RANGE_PCT, TRAIL_BUFFER_PCT } from './types'
-import { fetchPrices } from './priceFeeds'
+import { fetchPrices, seedPriceCache } from './priceFeeds'
 import { checkGridFills, initGrid, buildInitialOrders } from './gridBot'
 import { checkTrail } from './trailEngine'
 import { initDCAScheduler, checkMissedBuy, executeDCABuy } from './dcaBot'
@@ -21,6 +21,10 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
   if (!state.config.gridSOL || state.config.gridSOL <= 0) throw new Error('Grid SOL commitment required')
 
   state.botRunning = true
+
+  // Seed price cache from saved state so a cold-launch Dexscreener failure
+  // can fall back to the last known price instead of aborting resume entirely.
+  seedPriceCache(state.lastPriceSOL, state.lastSolUsdPrice)
 
   const prices = await fetchPrices(JIJ_MINT, platform)
   state.lastPriceSOL = prices.jijSolPrice
