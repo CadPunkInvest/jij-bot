@@ -1,8 +1,12 @@
 import { Platform, SOL_MINT } from './types'
 
-const PROXY_BASE = 'https://canadianpunkinvesting.com'
-const DEXSCREENER_TOKEN_URL = `${PROXY_BASE}/dexscreener/tokens`
-const COINGECKO_SOL_URL = `${PROXY_BASE}/coingecko/simple/price?ids=solana&vs_currencies=usd`
+const PROXY_HOSTS = [
+  'https://canadianpunkinvesting.com',
+  'https://proxy.jumpinjack.ca',
+]
+function getProxyBase() { return PROXY_HOSTS[Math.random() < 0.5 ? 0 : 1] }
+const DEXSCREENER_TOKEN_URL = () => `${getProxyBase()}/dexscreener/tokens`
+const COINGECKO_SOL_URL = () => `${getProxyBase()}/coingecko/simple/price?ids=solana&vs_currencies=usd`
 
 export interface PriceFeed {
   jijSolPrice: number
@@ -53,7 +57,7 @@ export async function fetchPrices(jijMint: string, platform: Platform): Promise<
 
 async function fetchFromDexscreener(jijMint: string, platform: Platform): Promise<{ jijSolPrice: number; jijUsdPrice: number }> {
   const res = await Promise.race([
-    platform.http.get(`${DEXSCREENER_TOKEN_URL}/${jijMint}`),
+    platform.http.get(`${DEXSCREENER_TOKEN_URL()}/${jijMint}`),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Dexscreener timeout')), 10_000)),
   ])
   if (res.status !== 200) throw new Error(`Dexscreener fetch failed: ${res.status}`)
@@ -76,7 +80,7 @@ async function fetchFromDexscreener(jijMint: string, platform: Platform): Promis
 }
 
 async function fetchSolUsdFromCoinGecko(platform: Platform): Promise<number> {
-  const res = await platform.http.get(COINGECKO_SOL_URL)
+  const res = await platform.http.get(COINGECKO_SOL_URL())
   if (res.status !== 200) throw new Error(`CoinGecko fetch failed: ${res.status}`)
   const json = res.data as { solana: { usd: number } }
   const price = json?.solana?.usd

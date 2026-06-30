@@ -1,8 +1,12 @@
 import { Platform } from './types'
 
-const PROXY_BASE = 'https://canadianpunkinvesting.com'
-const JUPITER_QUOTE_URL = `${PROXY_BASE}/swap/v1/quote`
-const JUPITER_SWAP_URL  = `${PROXY_BASE}/swap/v1/swap`
+const PROXY_HOSTS = [
+  'https://canadianpunkinvesting.com',
+  'https://proxy.jumpinjack.ca',
+]
+function getProxyBase() { return PROXY_HOSTS[Math.random() < 0.5 ? 0 : 1] }
+const JUPITER_QUOTE_URL = () => `${getProxyBase()}/swap/v1/quote`
+const JUPITER_SWAP_URL  = () => `${getProxyBase()}/swap/v1/swap`
 
 export interface SwapResult {
   txSignature: string
@@ -18,7 +22,7 @@ export async function jupiterSwap(
   slippageBps: number,
 ): Promise<SwapResult> {
   // Step 1: Quote
-  const quoteUrl = `${JUPITER_QUOTE_URL}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps}`
+  const quoteUrl = `${JUPITER_QUOTE_URL()}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps}`
   const quoteRes = await platform.http.get(quoteUrl)
   if (quoteRes.status !== 200) throw new Error(`Quote failed (${quoteRes.status}): ${JSON.stringify(quoteRes.data)}`)
   const quote = quoteRes.data as { outAmount?: string; error?: string }
@@ -26,7 +30,7 @@ export async function jupiterSwap(
   if (!quote.outAmount) throw new Error(`Quote returned no outAmount: ${JSON.stringify(quote)}`)
 
   // Step 2: Build + sign transaction
-  const swapRes = await platform.http.post(JUPITER_SWAP_URL, {
+  const swapRes = await platform.http.post(JUPITER_SWAP_URL(), {
     quoteResponse: quote,
     userPublicKey: walletPublicKey,
     wrapAndUnwrapSol: true,
