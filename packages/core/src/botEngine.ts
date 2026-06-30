@@ -134,7 +134,30 @@ export async function resumeBots(state: BotState, platform: Platform): Promise<v
   if (!state.botRunning || !state.walletPublicKey) return
   healOrderQuantities(state)
   healGridReserve(state)
-  logEntry(state, 'INFO', 'Bot resumed — restarting poll loop')
+
+  const openUnfilled = state.openOrders.filter(o => !o.filled)
+  if (openUnfilled.length === 0 && state.gridReserve > 0) {
+    // No open orders but capital is available — grid was never built or all levels
+    // were filled. Rebuild around the current price so the bot isn't dormant.
+    try {
+      const prices = await fetchPrices(JIJ_MINT, platform)
+      const currentPrice = prices.jijSolPrice
+      state.lastPriceSOL = currentPrice
+      state.lastSolUsdPrice = prices.solUsdPrice
+      state.config.entryPrice = currentPrice
+      state.config.gridLower  = currentPrice * (1 - GRID_RANGE_PCT)
+      state.config.gridUpper  = currentPrice * (1 + GRID_RANGE_PCT)
+      state.config.gridLevels = pickGridDensity()
+      initGrid(state)
+      buildInitialOrders(state, currentPrice)
+      logEntry(state, 'INFO', `Resume: no open orders — grid rebuilt at ${currentPrice.toFixed(8)} SOL`)
+    } catch (err) {
+      logEntry(state, 'ERROR', `Resume: could not rebuild grid — ${String(err)}`)
+    }
+  } else {
+    logEntry(state, 'INFO', 'Bot resumed — restarting poll loop')
+  }
+
   if (state.dcaStatus === 'on') {
     initDCAScheduler(state, platform)
   } else {
@@ -198,6 +221,26 @@ async function poll(state: BotState, platform: Platform): Promise<void> {
 export async function onAppResume(state: BotState, platform: Platform): Promise<void> {
   if (state.botRunning) {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
+
+    const openUnfilled = state.openOrders.filter(o => !o.filled)
+    if (openUnfilled.length === 0 && state.gridReserve > 0) {
+      try {
+        const prices = await fetchPrices(JIJ_MINT, platform)
+        const currentPrice = prices.jijSolPrice
+        state.lastPriceSOL = currentPrice
+        state.lastSolUsdPrice = prices.solUsdPrice
+        state.config.entryPrice = currentPrice
+        state.config.gridLower  = currentPrice * (1 - GRID_RANGE_PCT)
+        state.config.gridUpper  = currentPrice * (1 + GRID_RANGE_PCT)
+        state.config.gridLevels = pickGridDensity()
+        initGrid(state)
+        buildInitialOrders(state, currentPrice)
+        logEntry(state, 'INFO', `App resume: no open orders — grid rebuilt at ${currentPrice.toFixed(8)} SOL`)
+      } catch (err) {
+        logEntry(state, 'ERROR', `App resume: could not rebuild grid — ${String(err)}`)
+      }
+    }
+
     schedulePoll(state, platform)
   }
   checkMissedBuy(state, platform)
@@ -239,13 +282,31 @@ export async function topUpSOL(state: BotState, platform: Platform, amountSOL: n
   state.gridReserve += reserveAmt
   state.config.gridSOL += amountSOL
 
-  // Recalculate quantity per grid level based on updated reserve and redeploy into open buy orders
+  // Recalculate quantity per grid level based on updated reserve and redeploy into open buy orders.
+  // If no open buy orders exist (all filled during a price drop, or no grid yet), re-anchor
+  // the grid at the current price so the topped-up capital gets deployed immediately.
   const openBuys = state.openOrders.filter(o => !o.filled && o.side === 'buy')
   if (openBuys.length > 0) {
     const newQtyPerGrid = state.gridReserve / openBuys.length / ((state.config.gridLower + state.config.gridUpper) / 2)
     openBuys.forEach(o => { o.quantity = newQtyPerGrid })
     state.quantityPerGrid = newQtyPerGrid
     logEntry(state, 'INFO', `Top-up: redistributed reserve across ${openBuys.length} open buy orders (${newQtyPerGrid.toFixed(2)} JiJ/level)`)
+  } else {
+    try {
+      const prices = await fetchPrices(JIJ_MINT, platform)
+      const currentPrice = prices.jijSolPrice
+      state.lastPriceSOL = currentPrice
+      state.lastSolUsdPrice = prices.solUsdPrice
+      state.config.entryPrice = currentPrice
+      state.config.gridLower  = currentPrice * (1 - GRID_RANGE_PCT)
+      state.config.gridUpper  = currentPrice * (1 + GRID_RANGE_PCT)
+      state.config.gridLevels = pickGridDensity()
+      initGrid(state)
+      buildInitialOrders(state, currentPrice)
+      logEntry(state, 'INFO', `Top-up: no open buy orders — grid rebuilt at ${currentPrice.toFixed(8)} SOL`)
+    } catch (err) {
+      logEntry(state, 'ERROR', `Top-up: could not rebuild grid — ${String(err)}`)
+    }
   }
 
   logEntry(state, 'INFO', `Top-up: +${amountSOL.toFixed(4)} SOL committed (${reserveAmt.toFixed(4)} SOL added to grid reserve)`)
