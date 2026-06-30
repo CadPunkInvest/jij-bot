@@ -183,6 +183,7 @@ export function AuthGate({
       // User cancelled, biometric failed, or stored credential doesn't match — fall back to PIN
       // Only navigate to pin-entry if we're still in a biometric state (guard against concurrent calls)
       if (authStateRef.current === 'biometric-prompt') {
+        setError('Biometric didn’t match — enter your PIN below')
         setAuth('pin-entry')
       }
     } finally {

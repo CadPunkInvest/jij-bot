@@ -185,6 +185,9 @@ export async function getPinFromBiometric(): Promise<string> {
     title: 'Biometric Authentication',
     subtitle: 'Use fingerprint or face to unlock',
     negativeButtonText: 'Use PIN instead',
+    // Plugin defaults to 1 attempt — a single misread fingerprint was kicking
+    // users straight back to PIN entry, which looked like a biometric/PIN loop.
+    maxAttempts: 5,
   })
   const credentials = await NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER })
   return credentials.password
