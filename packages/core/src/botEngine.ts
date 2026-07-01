@@ -142,6 +142,7 @@ function healCausePct(state: BotState): void {
 
 export async function resumeBots(state: BotState, platform: Platform): Promise<void> {
   if (!state.botRunning || !state.walletPublicKey) return
+  seedPriceCache(state.lastPriceSOL, state.lastSolUsdPrice)
   healOrderQuantities(state)
   healGridReserve(state)
   healCausePct(state)
