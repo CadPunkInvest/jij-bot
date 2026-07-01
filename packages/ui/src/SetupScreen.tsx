@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useBotContext } from './BotContext'
 import { MIN_GRID_SOL, RECOMMENDED_GRID_SOL, GRID_RANGE_PCT } from '@jij-bot/core'
 import { WalletModal } from './WalletModal'
+import { VersionBadge } from './VersionBadge'
 
 const holoNum: React.CSSProperties = { textShadow: '0 0 12px currentColor' }
 
@@ -36,7 +37,7 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-export function SetupScreen({ bgImage, logoSrc }: { bgImage?: string; logoSrc?: string }) {
+export function SetupScreen({ bgImage, logoSrc, appVersion }: { bgImage?: string; logoSrc?: string; appVersion?: string }) {
   const { state, startBots, updateConfig, refreshBalance, withdrawSOL, previewDashboard, recoverState } = useBotContext()
   const hasExistingConfig = state.config.gridSOL > 0
   const [gridSOL, setGridSOL] = useState(() => hasExistingConfig ? String(state.config.gridSOL) : '')
@@ -132,6 +133,8 @@ export function SetupScreen({ bgImage, logoSrc }: { bgImage?: string; logoSrc?: 
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(2,4,16,0.38)',
       }} />
+
+      <VersionBadge version={appVersion} />
 
       {/* Scrollable centered column */}
       <div style={{

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useBotContext } from './BotContext'
-import { getDCAScheduledTimeLabel, dcaAvgCostBasis } from '@jij-bot/core'
+import { getDCAScheduledTimeLabel, dcaAvgCostBasis, getNextFormatSwitchTime } from '@jij-bot/core'
 import { WalletModal } from './WalletModal'
+import { VersionBadge } from './VersionBadge'
 
 const holoNum: React.CSSProperties = { textShadow: '0 0 10px currentColor' }
 
@@ -33,6 +34,40 @@ function formatSolPrice(price: number): string {
   return price.toFixed(4)
 }
 
+type PriceUnit = 'SOL' | 'USD'
+
+function formatJijPrice(priceSOL: number, solUsdPrice: number, unit: PriceUnit): string {
+  if (priceSOL <= 0) return '—'
+  if (unit === 'SOL') return formatSolPrice(priceSOL)
+  const usd = priceSOL * solUsdPrice
+  return usd < 0.01 ? `$${usd.toFixed(8)}` : `$${usd.toFixed(4)}`
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '00:00:00'
+  const totalSec = Math.floor(ms / 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  return [h, m, s].map(n => String(n).padStart(2, '0')).join(':')
+}
+
+function UnitToggle({ unit, onToggle }: { unit: PriceUnit; onToggle: (u: PriceUnit) => void }) {
+  const btn = (u: PriceUnit): React.CSSProperties => ({
+    padding: '2px 8px', borderRadius: 6, fontSize: 9, fontWeight: 800, cursor: 'pointer',
+    border: unit === u ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.12)',
+    background: unit === u ? 'rgba(96,165,250,0.25)' : 'rgba(255,255,255,0.04)',
+    color: unit === u ? '#93c5fd' : 'rgba(180,180,220,0.4)',
+    textTransform: 'uppercase',
+  })
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <button style={btn('SOL')} onClick={() => onToggle('SOL')}>SOL</button>
+      <button style={btn('USD')} onClick={() => onToggle('USD')}>USD</button>
+    </div>
+  )
+}
+
 // --- Sparkline ---
 function Sparkline({ prices, color = '#a78bfa' }: { prices: number[]; color?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -62,7 +97,7 @@ function Sparkline({ prices, color = '#a78bfa' }: { prices: number[]; color?: st
 }
 
 // --- Price ticker strip ---
-function PriceStrip({ logoSrc, onWalletOpen }: { logoSrc?: string; onWalletOpen: () => void }) {
+function PriceStrip({ logoSrc, onWalletOpen, priceUnit, onToggleUnit }: { logoSrc?: string; onWalletOpen: () => void; priceUnit: PriceUnit; onToggleUnit: (u: PriceUnit) => void }) {
   const { state, stopBots } = useBotContext()
   const { lastPriceSOL, lastSolUsdPrice, lastPollTime } = state
   const [priceHistory, setPriceHistory] = useState<number[]>([])
@@ -107,9 +142,12 @@ function PriceStrip({ logoSrc, onWalletOpen }: { logoSrc?: string; onWalletOpen:
           : <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(109,40,217,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, color: 'white', flexShrink: 0 }}>J</div>
         }
         <div style={{ minWidth: 0 }}>
-          <div style={cardLabel}>JIJ / SOL</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <div style={cardLabel}>JIJ / {priceUnit}</div>
+            <UnitToggle unit={priceUnit} onToggle={onToggleUnit} />
+          </div>
           <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: 'white', ...holoNum }}>
-            {lastPriceSOL > 0 ? formatSolPrice(lastPriceSOL) : '—'}
+            {formatJijPrice(lastPriceSOL, lastSolUsdPrice, priceUnit)}
           </div>
         </div>
         <Sparkline prices={priceHistory} color={up ? '#34d399' : '#f87171'} />
@@ -177,13 +215,22 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 }
 
 // --- Grid bar visual ---
-function GridBar() {
+function GridBar({ priceUnit }: { priceUnit: PriceUnit }) {
   const { state } = useBotContext()
-  const { openOrders, lastPriceSOL, gridLower, gridUpper, totalGridFills, gridLevels } = state
+  const { openOrders, lastPriceSOL, lastSolUsdPrice, gridLower, gridUpper, totalGridFills, gridLevels } = state
   const gridFormat = gridLevels === 60 ? 3 : gridLevels === 40 ? 2 : 1
   const [showPrices, setShowPrices] = useState(false)
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   if (openOrders.length === 0) return null
+
+  const nextSwitchTime = getNextFormatSwitchTime(state)
+  const switchCountdown = nextSwitchTime > 0 ? formatCountdown(nextSwitchTime - now) : null
 
   const sorted = [...openOrders].sort((a, b) => a.price - b.price)
   const sortedDesc = [...openOrders].sort((a, b) => b.price - a.price)
@@ -191,24 +238,24 @@ function GridBar() {
     ? Math.max(0, Math.min(100, ((lastPriceSOL - gridLower) / (gridUpper - gridLower)) * 100))
     : 50
 
+  const fmt = (p: number) => formatJijPrice(p, lastSolUsdPrice, priceUnit)
+
   return (
     <>
-    <div style={card}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>Grid</div>
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
-            Format {gridFormat}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={dimText}>Fills: <span style={{ color: 'white', fontWeight: 700 }}>{totalGridFills}</span></span>
-          <span style={dimText}>Levels: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
-          <button onClick={() => setShowPrices(true)}
-            style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer' }}>
-            Prices
-          </button>
-        </div>
+    <div style={{ ...card, textTransform: 'uppercase' }}>
+      <div style={{ textAlign: 'center', marginBottom: 4 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'white', letterSpacing: '0.05em' }}>GRID</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#93c5fd', marginTop: 2 }}>FORMAT ({gridFormat})</div>
+        {switchCountdown && (
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#fbbf24', marginTop: 4, fontFamily: 'monospace' }}>
+            NEXT FORMAT SWITCH: {switchCountdown}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '10px 0' }}>
+        <span style={dimText}>FILLS: <span style={{ color: 'white', fontWeight: 700 }}>{totalGridFills}</span></span>
+        <span style={dimText}>LEVELS: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
       </div>
 
       <div style={{ position: 'relative', height: 32, marginBottom: 10 }}>
@@ -216,7 +263,7 @@ function GridBar() {
         <div style={{ position: 'absolute', left: 0, top: '50%', height: 8, background: 'rgba(74,222,128,0.15)', borderRadius: '4px 0 0 4px', transform: 'translateY(-50%)', width: `${pricePct}%` }} />
         <div style={{ position: 'absolute', top: 0, bottom: 0, width: 2, background: '#60a5fa', left: `${pricePct}%`, boxShadow: '0 0 8px #60a5fa' }}>
           <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 9, color: '#93c5fd', fontFamily: 'monospace', whiteSpace: 'nowrap', ...holoNum }}>
-            {lastPriceSOL.toFixed(7)}
+            {fmt(lastPriceSOL)}
           </div>
         </div>
         {sorted.map(o => {
@@ -233,37 +280,43 @@ function GridBar() {
         })}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ ...dimText, fontFamily: 'monospace' }}>{gridLower.toFixed(7)}</span>
-        <span style={{ ...dimText, fontFamily: 'monospace' }}>{gridUpper.toFixed(7)}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ ...dimText, fontFamily: 'monospace' }}>{fmt(gridLower)}</span>
+        <span style={{ ...dimText, fontFamily: 'monospace' }}>{fmt(gridUpper)}</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 16 }}>
-        {[['#4ade80', 'Buy orders'], ['#f87171', 'Sell orders'], ['rgba(255,255,255,0.25)', 'Filled']].map(([color, label]) => (
-          <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, ...dimText }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', boxShadow: color === 'rgba(255,255,255,0.25)' ? 'none' : `0 0 4px ${color}` }} />
-            {label}
-          </span>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 16 }}>
+          {[['#4ade80', 'BUY'], ['#f87171', 'SELL'], ['rgba(255,255,255,0.25)', 'FILLED']].map(([color, label]) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, ...dimText }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', boxShadow: color === 'rgba(255,255,255,0.25)' ? 'none' : `0 0 4px ${color}` }} />
+              {label}
+            </span>
+          ))}
+        </div>
+        <button onClick={() => setShowPrices(true)}
+          style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase' }}>
+          PRICES
+        </button>
       </div>
     </div>
 
     {showPrices && (
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
         onClick={e => { if (e.target === e.currentTarget) setShowPrices(false) }}>
-        <div style={{ ...card, width: '100%', maxWidth: 320, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ ...card, width: '100%', maxWidth: 320, maxHeight: '80vh', display: 'flex', flexDirection: 'column', textTransform: 'uppercase' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Grid Prices</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>GRID PRICES</div>
             <button onClick={() => setShowPrices(false)}
-              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(180,180,220,0.7)', cursor: 'pointer' }}>
-              Close
+              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(180,180,220,0.7)', cursor: 'pointer', textTransform: 'uppercase' }}>
+              CLOSE
             </button>
           </div>
 
           {lastPriceSOL > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)' }}>
               <span style={{ fontSize: 11, color: '#93c5fd', fontWeight: 700 }}>▶ NOW</span>
-              <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#93c5fd' }}>{lastPriceSOL.toFixed(8)} SOL</span>
+              <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#93c5fd' }}>{fmt(lastPriceSOL)}</span>
             </div>
           )}
 
@@ -283,7 +336,7 @@ function GridBar() {
                     {isBuy ? 'BUY' : 'SELL'}
                   </span>
                   <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'white', flex: 1 }}>
-                    {o.price.toFixed(8)}
+                    {fmt(o.price)}
                   </span>
                   <span style={{ fontSize: 10, color: 'rgba(160,160,200,0.5)' }}>L{o.level}</span>
                   {o.filled && <span style={{ fontSize: 10, color: 'rgba(160,160,200,0.4)' }}>✓</span>}
@@ -293,8 +346,8 @@ function GridBar() {
           </div>
 
           <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            <span style={dimText}>Open: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
-            <span style={dimText}>Filled: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => o.filled).length}</span></span>
+            <span style={dimText}>OPEN: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => !o.filled).length}</span></span>
+            <span style={dimText}>FILLED: <span style={{ color: 'white', fontWeight: 700 }}>{openOrders.filter(o => o.filled).length}</span></span>
           </div>
         </div>
       </div>
@@ -592,6 +645,58 @@ function DCACard() {
   )
 }
 
+const CAUSE_PRESETS = [1, 2, 3, 4, 5]
+
+// --- The Cause card ---
+function CauseCard() {
+  const { state, setCausePct } = useBotContext()
+  const { causePct, causePool, totalCauseDonatedSOL, lastSolUsdPrice } = state
+
+  const pctBtn = (pct: number): React.CSSProperties => ({
+    flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+    border: causePct === pct ? '1px solid rgba(74,222,128,0.5)' : '1px solid rgba(255,255,255,0.12)',
+    background: causePct === pct ? 'rgba(74,222,128,0.2)' : 'rgba(255,255,255,0.06)',
+    color: causePct === pct ? '#4ade80' : 'rgba(180,180,220,0.5)',
+  })
+
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>The Cause</div>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80' }}>
+          ALWAYS ON
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {CAUSE_PRESETS.map(pct => (
+          <button key={pct} onClick={() => setCausePct(pct)} style={pctBtn(pct)}>{pct}%</button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={mutedText}>Pending send</span>
+        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'white', fontSize: 13, ...holoNum }}>
+          {causePool.toFixed(4)} SOL
+          {lastSolUsdPrice > 0 && <span style={{ ...dimText, marginLeft: 6 }}>(${(causePool * lastSolUsdPrice).toFixed(2)})</span>}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={mutedText}>Donated to M.A.P.L.E.</span>
+        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#4ade80', fontSize: 13, ...holoNum }}>
+          {totalCauseDonatedSOL.toFixed(4)} SOL
+          {lastSolUsdPrice > 0 && <span style={{ ...dimText, marginLeft: 6 }}>(${(totalCauseDonatedSOL * lastSolUsdPrice).toFixed(2)})</span>}
+        </span>
+      </div>
+
+      <div style={{ ...dimText, lineHeight: 1.5 }}>
+        {`Skimming ${causePct}% of profits after tax reserve — sent directly to M.A.P.L.E.'s donation wallet as it accrues. Minimum 1%, choose up to 5%.`}
+      </div>
+    </div>
+  )
+}
+
 // --- Session card ---
 function SessionCard() {
   const { state, emergencyStop, reanchorGrid } = useBotContext()
@@ -731,8 +836,9 @@ function ActivityFeed() {
 }
 
 // --- Main export ---
-export function LiveDashboard({ bgImage, logoSrc }: { bgImage?: string; logoSrc?: string }) {
+export function LiveDashboard({ bgImage, logoSrc, appVersion }: { bgImage?: string; logoSrc?: string; appVersion?: string }) {
   const [walletOpen, setWalletOpen] = useState(false)
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>('SOL')
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -740,12 +846,14 @@ export function LiveDashboard({ bgImage, logoSrc }: { bgImage?: string; logoSrc?
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(2,4,16,0.38)' }} />
       <div style={{ position: 'relative', zIndex: 10, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <PriceStrip logoSrc={logoSrc} onWalletOpen={() => setWalletOpen(true)} />
+        <VersionBadge version={appVersion} variant="inline" />
+        <PriceStrip logoSrc={logoSrc} onWalletOpen={() => setWalletOpen(true)} priceUnit={priceUnit} onToggleUnit={setPriceUnit} />
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 16px 24px' }}>
           <div style={{ width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <StatsRow />
-            <GridBar />
+            <GridBar priceUnit={priceUnit} />
             <DCACard />
+            <CauseCard />
             <SessionCard />
             <ActivityFeed />
           </div>

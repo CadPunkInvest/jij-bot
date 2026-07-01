@@ -24,8 +24,8 @@ function AppInner() {
     <div className="relative h-full">
       <div className="relative z-10 h-full">
         {state.botRunning
-          ? <LiveDashboard bgImage={dashBg} logoSrc={logo} />
-          : <SetupScreen bgImage={setupBg} logoSrc={logo} />
+          ? <LiveDashboard bgImage={dashBg} logoSrc={logo} appVersion={__APP_VERSION__} />
+          : <SetupScreen bgImage={setupBg} logoSrc={logo} appVersion={__APP_VERSION__} />
         }
       </div>
       {sprites.map(s => <SpriteRenderer key={s.id} config={s} />)}

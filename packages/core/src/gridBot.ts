@@ -36,11 +36,14 @@ export function buildInitialOrders(state: BotState, currentPrice: number): void 
   logEntry(state, 'INFO', `Built ${state.openOrders.length} grid orders at entry price ${currentPrice.toFixed(8)}`)
 }
 
+export type RouteProfitFn = (state: BotState, platform: Platform, profitSOL: number, solUsdPrice: number) => Promise<void>
+
 export async function checkGridFills(
   state: BotState,
   platform: Platform,
   currentPrice: number,
   solUsdPrice: number,
+  routeProfitFn: RouteProfitFn = routeProfit,
 ): Promise<void> {
   // Min SOL reserve guard — ensure enough SOL for gas
   const walletSOL = await platform.wallet.getBalance()
@@ -65,7 +68,7 @@ export async function checkGridFills(
       continue
     }
 
-    await executeFill(state, platform, order, currentPrice, solUsdPrice)
+    await executeFill(state, platform, order, currentPrice, solUsdPrice, routeProfitFn)
   }
 }
 
@@ -75,6 +78,7 @@ async function executeFill(
   order: GridOrder,
   currentPrice: number,
   solUsdPrice: number,
+  routeProfitFn: RouteProfitFn,
 ): Promise<void> {
   const [inputMint, outputMint] = order.side === 'buy'
     ? [SOL_MINT, JIJ_MINT]
@@ -111,7 +115,7 @@ async function executeFill(
       side: order.side,
     })
 
-    await routeProfit(state, platform, profitSOL, solUsdPrice)
+    await routeProfitFn(state, platform, profitSOL, solUsdPrice)
     placeCounterOrder(state, order)
   } catch (err) {
     logEntry(state, 'ERROR', `Grid fill failed at level ${order.level}: ${String(err)}`)

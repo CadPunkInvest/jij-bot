@@ -40,6 +40,7 @@ const actionBtn = (color: string, border: string): React.CSSProperties => ({
 export function WalletModal({ onClose }: { onClose: () => void }) {
   const { state, platform, withdrawSOL, withdrawJiJ, withdrawUSDC, exportPrivateKey, refreshBalance } = useBotContext()
   const address = state.walletPublicKey ?? ''
+  const { lastSolUsdPrice, lastPriceSOL } = state
 
   const [solBalance, setSolBalance] = useState<number | null>(null)
   const [jijBalance, setJijBalance] = useState<number | null>(null)
@@ -171,12 +172,31 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
               {refreshing ? '…' : 'Refresh'}
             </button>
           </div>
-          {[['SOL', solBalance?.toFixed(6), 'white'], ['JiJ', jijBalance != null ? jijBalance.toLocaleString(undefined, { maximumFractionDigits: 2 }) : null, '#c084fc'], ['USDC', usdcBalance != null ? usdcBalance.toFixed(2) : null, '#4ade80']].map(([label, val, color]) => (
-            <div key={label as string} style={rowStyle}>
+          {([
+            ['SOL', solBalance?.toFixed(6), 'white', solBalance != null ? solBalance * lastSolUsdPrice : null],
+            ['JiJ', jijBalance != null ? jijBalance.toLocaleString(undefined, { maximumFractionDigits: 2 }) : null, '#c084fc', jijBalance != null ? jijBalance * lastPriceSOL * lastSolUsdPrice : null],
+            ['USDC', usdcBalance != null ? usdcBalance.toFixed(2) : null, '#4ade80', usdcBalance],
+          ] as [string, string | null, string, number | null][]).map(([label, val, color, usdVal]) => (
+            <div key={label} style={rowStyle}>
               <span style={mutedLabel}>{label}</span>
-              <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600, color: color as string }}>{val ?? '—'}</span>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600, color }}>{val ?? '—'}</div>
+                {usdVal != null && <div style={{ ...dimText, marginTop: 1 }}>${usdVal.toFixed(2)}</div>}
+              </div>
             </div>
           ))}
+          {(solBalance != null || jijBalance != null || usdcBalance != null) && (
+            <div style={{ ...rowStyle, paddingTop: 8, marginTop: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ ...mutedLabel, fontWeight: 700 }}>Total (USD)</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: '#4ade80' }}>
+                ${(
+                  (solBalance != null ? solBalance * lastSolUsdPrice : 0) +
+                  (jijBalance != null ? jijBalance * lastPriceSOL * lastSolUsdPrice : 0) +
+                  (usdcBalance ?? 0)
+                ).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Withdraw SOL */}

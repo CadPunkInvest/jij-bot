@@ -26,7 +26,7 @@ import {
   buildInitialOrders,
   GRID_RANGE_PCT,
 } from '@jij-bot/core'
-import { setDCAStatus, initDCAScheduler } from '@jij-bot/core'
+import { setDCAStatus, initDCAScheduler, setCausePct } from '@jij-bot/core'
 
 interface BotContextValue {
   state: BotState
@@ -44,6 +44,7 @@ interface BotContextValue {
   exportPrivateKey?: () => Promise<string>
   refreshBalance: () => Promise<number>
   setDCAStatus: (s: DCAStatus) => void
+  setCausePct: (pct: number) => void
   updateConfig: (partial: Partial<BotState['config']>) => void
   triggerResume: () => void
   previewDashboard: () => void
@@ -173,6 +174,10 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const handleSetCausePct = (pct: number) => {
+    mutate(st => setCausePct(st, pct))
+  }
+
   const updateConfig = (partial: Partial<BotState['config']>) => {
     mutate(s => { s.config = { ...s.config, ...partial } })
   }
@@ -247,6 +252,7 @@ export function BotProvider({ children }: { children: React.ReactNode }) {
       exportPrivateKey: platform?.exportPrivateKey?.bind(platform),
       refreshBalance: handleRefreshBalance,
       setDCAStatus: handleSetDCAStatus,
+      setCausePct: handleSetCausePct,
       updateConfig,
       triggerResume,
       previewDashboard,

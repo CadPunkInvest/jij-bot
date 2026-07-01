@@ -109,6 +109,9 @@ export interface BotConfig {
   minSOLReserve: number
   pollingIntervalSec: number
   rpcEndpoint: string
+
+  // Charity Bot (MAPLE) only
+  veritreeSendIntervalDays: number   // e.g. 30 for monthly — caretaker-configurable cadence
 }
 
 export interface BotState {
@@ -150,6 +153,40 @@ export interface BotState {
   lastSolUsdPrice: number
   lastPollTime: number
   gridFormatVersion: number
+
+  // 3x-daily random grid format switch — one slot per 8-hour window (9am/5pm/1am anchors)
+  gridFormatCycleAnchor: number
+  gridFormatSwitchTimes: [number, number, number]
+  gridFormatSwitchExecuted: [boolean, boolean, boolean]
+  gridFormatWindowOffsets: [number, number, number]
+
+  // "The Cause" — optional profit-skim pool, 0 = deactivated
+  causePct: number
+  causePool: number
+  totalCauseDonatedSOL: number
+
+  // Charity Bot (MAPLE) only — personal bots never populate these.
+  trailSegments: TrailSegment[]        // [] = legacy single-buffer trail mode (personal bots)
+  veritreePool: number                 // USDC — accumulates toward veritreeThresholdUSDC
+  pendingVeritreeSOL: number           // queued SOL→USDC swap retry, mirrors pendingTaxReserveSOL
+  cloneBuffer: number                  // USDC — reserved to arm a future Clone Bot
+  pendingCloneSOL: number              // queued SOL→USDC swap retry
+  veritreePoolStatus: DCAStatus        // 'off' = accumulate only
+  veritreeThresholdUSDC: number | null
+  veritreeDepositAddress: string
+  veritreeNextSendCheck: number        // epoch ms — next time the interval schedule checks/sends
+
+  donationPool: number                 // SOL — inbound donations awaiting the daily 9am tiered buy
+  donationBuyTime: number              // next scheduled 9am epoch ms
+  donationBuyExecutedToday: boolean
+
+  gridArmed: boolean                   // false until accumulated capital first crosses MIN_GRID_SOL
+}
+
+export interface TrailSegment {
+  capacitySOL: number
+  filledSOL: number
+  deployed: boolean
 }
 
 export const DEFAULT_CONFIG: BotConfig = {
@@ -167,7 +204,10 @@ export const DEFAULT_CONFIG: BotConfig = {
   minSOLReserve: 0.05,
   pollingIntervalSec: 10,
   rpcEndpoint: 'https://rpc.ankr.com/solana',
+  veritreeSendIntervalDays: 30,
 }
+
+export const GRID_DENSITIES = [20, 40, 60] as const
 
 export const MIN_GRID_SOL = 0.1
 export const RECOMMENDED_GRID_SOL = 0.25
@@ -208,9 +248,66 @@ export const DEFAULT_STATE: BotState = {
   lastSolUsdPrice: 0,
   lastPollTime: 0,
   gridFormatVersion: 1,
+  gridFormatCycleAnchor: 0,
+  gridFormatSwitchTimes: [0, 0, 0],
+  gridFormatSwitchExecuted: [false, false, false],
+  gridFormatWindowOffsets: [-1, -1, -1],
+  causePct: 1,
+  causePool: 0,
+  totalCauseDonatedSOL: 0,
+  trailSegments: [],
+  veritreePool: 0,
+  pendingVeritreeSOL: 0,
+  cloneBuffer: 0,
+  pendingCloneSOL: 0,
+  veritreePoolStatus: 'off',
+  veritreeThresholdUSDC: null,
+  veritreeDepositAddress: '',
+  veritreeNextSendCheck: 0,
+  donationPool: 0,
+  donationBuyTime: 0,
+  donationBuyExecutedToday: false,
+  gridArmed: false,
+}
+
+export const MAX_TRAIL_SEGMENTS = 10
+
+export const TRAIL_SEGMENT_TIERS: { maxValueSOL: number; segmentSOL: number }[] = [
+  { maxValueSOL: 5, segmentSOL: 1 },
+  { maxValueSOL: 15, segmentSOL: 2 },
+  { maxValueSOL: 30, segmentSOL: 5 },
+  { maxValueSOL: 75, segmentSOL: 10 },
+  { maxValueSOL: 150, segmentSOL: 20 },
+  { maxValueSOL: 300, segmentSOL: 35 },
+  { maxValueSOL: Infinity, segmentSOL: 50 },
+]
+
+export const DONATION_TIERS_USD: { maxBalanceUSD: number; dailyBuyUSD: number }[] = [
+  { maxBalanceUSD: 500, dailyBuyUSD: 100 },
+  { maxBalanceUSD: 2000, dailyBuyUSD: 250 },
+  { maxBalanceUSD: 5000, dailyBuyUSD: 500 },
+  { maxBalanceUSD: 10000, dailyBuyUSD: 1000 },
+  { maxBalanceUSD: 25000, dailyBuyUSD: 2000 },
+  { maxBalanceUSD: Infinity, dailyBuyUSD: 5000 },
+]
+
+export const MIN_DONATION_BUY_USD = 10
+
+// Relative weights across the five post-tax pools (Grid : Veritree : DCA : Trail : Clone).
+// Normalized at use-site so they always fill exactly 100% of whatever remains after tax,
+// regardless of the caretaker's configured tax rate.
+export const CHARITY_POOL_WEIGHTS = {
+  grid: 16,
+  veritree: 16,
+  dca: 12,
+  trail: 12,
+  clone: 8,
 }
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112'
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 export const JIJ_MINT = '14hACq5xFZQSeuXj8ggsTu8SmrBeUKZT13kPHeeTboop'
 export const JIJ_DECIMALS = 9
+
+// The Cause — M.A.P.L.E. charity bot's SOL donation address
+export const MAPLE_DONATION_ADDRESS = 'BkzvviyRTv3RnPpjGQtM5AcfJbGMUVA4SfCcvhL5Tq55'

@@ -4,6 +4,9 @@ node_modules/
 # Rust build artifacts
 apps/desktop/src-tauri/target/
 
+# Charity Bot (M.A.P.L.E.) — private, caretaker-only, never pushed to GitHub
+apps/charity-bot/
+
 # Frontend build output
 apps/desktop/dist/
 apps/android/dist/

@@ -1,14 +1,14 @@
-import { BotState, Platform, JIJ_MINT, SOL_MINT, USDC_MINT, JIJ_DECIMALS, GRID_RANGE_PCT, TRAIL_BUFFER_PCT } from './types'
+import { BotState, Platform, JIJ_MINT, SOL_MINT, USDC_MINT, JIJ_DECIMALS, GRID_RANGE_PCT, TRAIL_BUFFER_PCT, GRID_DENSITIES } from './types'
 import { fetchPrices, seedPriceCache } from './priceFeeds'
 import { checkGridFills, initGrid, buildInitialOrders } from './gridBot'
 import { checkTrail } from './trailEngine'
 import { initDCAScheduler, checkMissedBuy, executeDCABuy } from './dcaBot'
+import { initGridFormatScheduler, checkGridFormatSwitches } from './gridFormatBot'
 import { loadState, saveState, allocateCapital } from './stateManager'
 import { logEntry } from './activityLog'
 import { jupiterSwap, toLamports } from './jupiterSwap'
 import { retryPendingTax } from './taxReserve'
-
-const GRID_DENSITIES = [20, 40, 60] as const
+import { flushCausePool } from './causeDonation'
 
 function pickGridDensity(): number {
   return GRID_DENSITIES[Math.floor(Math.random() * GRID_DENSITIES.length)]
@@ -35,12 +35,14 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
   if (isResume) {
     healOrderQuantities(state)
     healGridReserve(state)
+    healCausePct(state)
     if (state.gridFormatVersion < 2) {
       migrateGridFormat(state, prices.jijSolPrice)
     }
     logEntry(state, 'INFO', 'Bot restarted — resuming existing grid')
     initDCAScheduler(state, platform)
     await checkMissedBuy(state, platform)
+    initGridFormatScheduler(state, platform)
   } else {
     // Fresh start: allocate capital, seed buy, build grid
     allocateCapital(state, prices.jijSolPrice)
@@ -83,6 +85,7 @@ export async function startBots(state: BotState, platform: Platform): Promise<vo
     initGrid(state)
     buildInitialOrders(state, gridEntryPrice)
     initDCAScheduler(state, platform)
+    initGridFormatScheduler(state, platform)
     logEntry(state, 'INFO', `Bots started fresh — grid density: ${state.config.gridLevels} rungs`)
   }
 
@@ -130,10 +133,18 @@ function healGridReserve(state: BotState): void {
   logEntry(state, 'INFO', `Healed grid reserve: ${state.gridReserve.toFixed(4)} SOL restored from committed ${state.config.gridSOL.toFixed(4)} SOL`)
 }
 
+// The Cause became mandatory (min 1%) after launch — heal any state saved before that change.
+function healCausePct(state: BotState): void {
+  if (state.causePct >= 1) return
+  state.causePct = 1
+  logEntry(state, 'INFO', 'The Cause is now mandatory — healed to 1% minimum')
+}
+
 export async function resumeBots(state: BotState, platform: Platform): Promise<void> {
   if (!state.botRunning || !state.walletPublicKey) return
   healOrderQuantities(state)
   healGridReserve(state)
+  healCausePct(state)
 
   const openUnfilled = state.openOrders.filter(o => !o.filled)
   if (openUnfilled.length === 0 && state.gridReserve > 0) {
@@ -163,6 +174,8 @@ export async function resumeBots(state: BotState, platform: Platform): Promise<v
   } else {
     await checkMissedBuy(state, platform)
   }
+  initGridFormatScheduler(state, platform)
+  checkGridFormatSwitches(state, state.lastPriceSOL)
   schedulePoll(state, platform)
 }
 
@@ -203,8 +216,12 @@ async function poll(state: BotState, platform: Platform): Promise<void> {
     if (state.pendingTaxReserveSOL > 0) {
       await retryPendingTax(state, platform, prices.solUsdPrice)
     }
+    if (state.causePool > 0) {
+      await flushCausePool(state, platform)
+    }
 
     await checkGridFills(state, platform, prices.jijSolPrice, prices.solUsdPrice)
+    checkGridFormatSwitches(state, prices.jijSolPrice)
     await checkTrail(state, platform, prices.jijSolPrice)
 
     // Check DCA scheduled time
@@ -241,6 +258,8 @@ export async function onAppResume(state: BotState, platform: Platform): Promise<
       }
     }
 
+    initGridFormatScheduler(state, platform)
+    checkGridFormatSwitches(state, state.lastPriceSOL)
     schedulePoll(state, platform)
   }
   checkMissedBuy(state, platform)

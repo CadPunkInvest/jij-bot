@@ -31,8 +31,8 @@ function AppInner() {
   }, [state.botRunning])
 
   return state.botRunning
-    ? <LiveDashboard bgImage={dashBg} logoSrc={logo} />
-    : <SetupScreen bgImage={setupBg} logoSrc={logo} />
+    ? <LiveDashboard bgImage={dashBg} logoSrc={logo} appVersion={__APP_VERSION__} />
+    : <SetupScreen bgImage={setupBg} logoSrc={logo} appVersion={__APP_VERSION__} />
 }
 
 export function App() {

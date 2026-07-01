@@ -31,6 +31,9 @@ class BotWorker(context: Context, params: WorkerParameters) : Worker(context, pa
             if (!state.optBoolean("botRunning", false)) return Result.success()
 
             val price = fetchJiJPrice() ?: return Result.retry()
+
+            checkGridFormatSwitch(state, price)
+
             val openOrders = state.getJSONArray("openOrders")
             var filled = false
 
@@ -51,7 +54,6 @@ class BotWorker(context: Context, params: WorkerParameters) : Worker(context, pa
                     order.put("timestamp", System.currentTimeMillis())
                     filled = true
                     notify("Grid Fill", "${if (side == "buy") "Bought" else "Sold"} ${quantity.toLong()} JiJ @ $orderPrice SOL")
-                    break // one fill per cycle
                 }
             }
 
@@ -67,6 +69,62 @@ class BotWorker(context: Context, params: WorkerParameters) : Worker(context, pa
         } catch (e: Exception) {
             Result.retry()
         }
+    }
+
+    // Mirrors packages/core/src/gridFormatBot.ts checkGridFormatSwitches — nothing rests on an
+    // exchange, so a format switch is just discarding and rebuilding the in-memory order array.
+    private fun checkGridFormatSwitch(state: JSONObject, currentPrice: Double) {
+        val switchTimes = state.optJSONArray("gridFormatSwitchTimes") ?: return
+        val switchExecuted = state.optJSONArray("gridFormatSwitchExecuted") ?: return
+        if (switchTimes.length() < 3 || switchExecuted.length() < 3) return
+
+        val now = System.currentTimeMillis()
+        for (i in 0 until 3) {
+            val dueAt = switchTimes.getLong(i)
+            val executed = switchExecuted.getBoolean(i)
+            if (!executed && dueAt > 0 && now >= dueAt) {
+                rebuildGridWithNewFormat(state, currentPrice)
+                switchExecuted.put(i, true)
+            }
+        }
+    }
+
+    private fun rebuildGridWithNewFormat(state: JSONObject, currentPrice: Double) {
+        val config = state.optJSONObject("config") ?: return
+        val currentLevels = config.optInt("gridLevels", GRID_DENSITIES[0])
+        val candidates = GRID_DENSITIES.filter { it != currentLevels }
+        val newLevels = candidates[(Math.random() * candidates.size).toInt()]
+
+        val gridLower = config.optDouble("gridLower", 0.0)
+        val gridUpper = config.optDouble("gridUpper", 0.0)
+        if (gridLower <= 0.0 || gridUpper <= 0.0) return
+        val gridReserve = state.optDouble("gridReserve", 0.0)
+
+        config.put("gridLevels", newLevels)
+        state.put("gridLevels", newLevels)
+        val gridStep = (gridUpper - gridLower) / newLevels
+        state.put("gridStep", gridStep)
+        val buyLevels = newLevels / 2
+        val midPrice = (gridLower + gridUpper) / 2
+        val quantityPerGrid = if (buyLevels > 0) gridReserve / buyLevels / midPrice else 0.0
+        state.put("quantityPerGrid", quantityPerGrid)
+
+        val newOrders = JSONArray()
+        for (level in 0..newLevels) {
+            val orderPrice = gridLower + level * gridStep
+            val side = if (orderPrice < currentPrice) "buy" else "sell"
+            val order = JSONObject().apply {
+                put("id", java.util.UUID.randomUUID().toString())
+                put("level", level)
+                put("price", orderPrice)
+                put("side", side)
+                put("quantity", quantityPerGrid)
+                put("filled", false)
+                put("timestamp", System.currentTimeMillis())
+            }
+            newOrders.put(order)
+        }
+        state.put("openOrders", newOrders)
     }
 
     private fun fetchJiJPrice(): Double? {
@@ -168,5 +226,6 @@ class BotWorker(context: Context, params: WorkerParameters) : Worker(context, pa
         const val SOL_MINT = "So11111111111111111111111111111111111111112"
         const val RPC = "https://rpc.ankr.com/solana"
         const val CHANNEL_ID = "jij_fills"
+        val GRID_DENSITIES = intArrayOf(20, 40, 60)
     }
 }
