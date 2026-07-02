@@ -372,7 +372,7 @@ const TAX_PRESETS = [20, 30, 40, 50]
 // --- Stats row ---
 function StatsRow() {
   const { state, topUpSOL, updateConfig, refreshBalance } = useBotContext()
-  const { realizedPnLSOL, realizedPnLUSD, gridReserve, trailBuffer, taxReserveUSDC, lastSolUsdPrice, config } = state
+  const { realizedPnLSOL, realizedPnLUSD, gridReserve, trailBuffer, dcaPool, causePool, pendingTaxReserveSOL, taxReserveUSDC, lastSolUsdPrice, config } = state
   const [showTopUp, setShowTopUp] = useState(false)
   const [topUpAmount, setTopUpAmount] = useState('')
   const [topUpBusy, setTopUpBusy] = useState(false)
@@ -382,6 +382,12 @@ function StatsRow() {
 
   const gridUSD = gridReserve * lastSolUsdPrice
   const trailUSD = trailBuffer * lastSolUsdPrice
+
+  // Nothing is escrowed on-chain — grid orders are virtual, so gridReserve/trailBuffer/dcaPool/
+  // causePool are all still sitting as real SOL in this wallet. Subtract them so "Available"
+  // reflects true uncommitted surplus, not the bot's entire committed balance.
+  const committedSOL = gridReserve + trailBuffer + dcaPool + causePool + pendingTaxReserveSOL
+  const availableSOL = walletSOL != null ? Math.max(0, walletSOL - committedSOL) : null
 
   const openTopUp = async () => {
     setShowTopUp(true)
@@ -469,19 +475,24 @@ function StatsRow() {
         <Modal onClose={() => { setShowTopUp(false); setTopUpAmount('') }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'white', marginBottom: 4 }}>Add SOL to Grid</div>
           <p style={{ ...dimText, marginBottom: 12, lineHeight: 1.5 }}>30% buys JiJ immediately · 70% added to grid reserve</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={{ ...dimText, fontSize: 13 }}>
               Available: <span style={{ color: 'white', fontWeight: 600 }}>
-                {walletSOL != null ? `${walletSOL.toFixed(4)} SOL` : '…'}
+                {availableSOL != null ? `${availableSOL.toFixed(4)} SOL` : '…'}
               </span>
             </span>
-            {walletSOL != null && walletSOL > 0.000005 && (
-              <button onClick={() => setTopUpAmount((walletSOL - 0.000005).toFixed(4))}
+            {availableSOL != null && availableSOL > 0.000005 && (
+              <button onClick={() => setTopUpAmount((availableSOL - 0.000005).toFixed(4))}
                 style={{ fontSize: 12, fontWeight: 600, color: '#93c5fd', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 8, padding: '3px 10px', cursor: 'pointer' }}>
                 Max
               </button>
             )}
           </div>
+          {walletSOL != null && (
+            <div style={{ ...dimText, fontSize: 11, marginBottom: 10 }}>
+              Wallet holds {walletSOL.toFixed(4)} SOL total — {committedSOL.toFixed(4)} SOL already committed to the grid/trail/DCA/Cause pools
+            </div>
+          )}
           <div style={{ position: 'relative', marginBottom: 14 }}>
             <input type="number" min="0.01" step="0.01" value={topUpAmount}
               onChange={e => setTopUpAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
