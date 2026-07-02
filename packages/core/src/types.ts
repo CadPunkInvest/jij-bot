@@ -209,6 +209,8 @@ export const DEFAULT_CONFIG: BotConfig = {
 
 export const GRID_DENSITIES = [20, 40, 60] as const
 
+export const MIN_DCA_BUY_USD = 1 // below this, network/priority fees + slippage can exceed the trade value
+
 export const MIN_GRID_SOL = 0.1
 export const RECOMMENDED_GRID_SOL = 0.25
 export const GRID_RANGE_PCT = 0.40   // ±40% from entry price

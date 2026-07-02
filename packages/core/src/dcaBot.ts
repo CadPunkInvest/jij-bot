@@ -1,4 +1,4 @@
-import { BotState, Platform, DCAStatus, DCABuyEvent, SOL_MINT, JIJ_MINT } from './types'
+import { BotState, Platform, DCAStatus, DCABuyEvent, SOL_MINT, JIJ_MINT, MIN_DCA_BUY_USD } from './types'
 import { jupiterSwap, toLamports } from './jupiterSwap'
 import { scheduleMidnightReset, cryptoRandom } from './scheduler'
 import { logEntry } from './activityLog'
@@ -74,6 +74,15 @@ export async function executeDCABuy(state: BotState, platform: Platform): Promis
 
   const dailyCapSOL = state.config.dailyDCALimitUSD / solUsdPrice
   const buyAmountSOL = Math.min(dailyCapSOL, state.dcaPool)
+
+  // Minimum viable trade size — below this, fees/slippage can exceed the trade value.
+  // Leave the pool untouched and don't mark today as executed, so it keeps accumulating
+  // profit and gets another chance once it clears the floor (tomorrow, or sooner via resume).
+  // Silent skip (no log entry) — this re-checks every poll cycle while under the floor and
+  // would otherwise spam the activity feed with an entry every ~10s.
+  if (buyAmountSOL * solUsdPrice < MIN_DCA_BUY_USD) {
+    return
+  }
 
   // Min SOL reserve guard
   const walletSOL = await platform.wallet.getBalance()
